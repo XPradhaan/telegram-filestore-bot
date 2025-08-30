@@ -10,10 +10,7 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", 0))   # Channel where files will be stored
-
-# Hardcoded Webhook URL (Render app ka public URL)
-WEBHOOK_URL = "https://telegram-filestore-bot-1.onrender.com/webhook"
-
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")        # Render public URL e.g. https://your-app.onrender.com/webhook
 PORT = int(os.getenv("PORT", 8080))
 
 # =========================
