@@ -3,39 +3,44 @@ from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pymongo import MongoClient
 
-# 🔧 Config Vars (Render के Dashboard से set करना)
+# ---------------- CONFIG ---------------- #
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))  # file storage channel
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))  # File storage channel
 MONGO_URL = os.getenv("MONGO_URL")
 ADMINS = [int(x) for x in os.getenv("ADMINS", "123456789").split(",")]
 
-# ⚡ Bot & DB init
+# ---------------- INIT ---------------- #
 app = Client("filestorebot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 db = MongoClient(MONGO_URL).filestore
 files_collection = db.files
 users_collection = db.users
 
-# Default expiry in hours
-DEFAULT_EXPIRY = 24
+DEFAULT_EXPIRY = 24  # hours
+
 
 def get_user_expiry(user_id):
     user = users_collection.find_one({"user_id": user_id})
     return user["expiry"] if user else DEFAULT_EXPIRY
 
-# ✅ Save File Handler
+
+# ---------------- SAVE FILE ---------------- #
 @app.on_message(filters.document | filters.video | filters.audio | filters.photo)
 async def save_file(client, message):
-    file_name = getattr(message.document or message.video or message.audio or message.photo, "file_name", "NoName")
+    file_name = getattr(
+        message.document or message.video or message.audio or message.photo,
+        "file_name",
+        "NoName"
+    )
 
-    # Step 1 → Save file in channel
+    # Save file in channel (Permanent)
     sent_msg = await message.copy(CHANNEL_ID)
 
     expiry_hours = get_user_expiry(message.from_user.id)
     expiry_time = datetime.utcnow() + timedelta(hours=expiry_hours)
 
-    # Step 2 → Save metadata
+    # Save in DB
     files_collection.insert_one({
         "message_id": sent_msg.id,
         "file_name": file_name,
@@ -49,14 +54,15 @@ async def save_file(client, message):
         upsert=True
     )
 
-    # Step 3 → Send file back
+    # Send back to user (Direct Send)
     await sent_msg.copy(
         chat_id=message.chat.id,
         protect_content=True,
         caption=f"✅ File Saved!\n📂 **Name:** {file_name}\n🆔 ID: `{sent_msg.id}`\n⏳ **Expiry:** {expiry_hours} Hours"
     )
 
-# 🔎 /get command
+
+# ---------------- GET FILE ---------------- #
 @app.on_message(filters.command("get"))
 async def get_file(client, message):
     if len(message.command) < 2:
@@ -81,7 +87,8 @@ async def get_file(client, message):
         protect_content=True
     )
 
-# 📢 Broadcast Command (admin only)
+
+# ---------------- BROADCAST ---------------- #
 @app.on_message(filters.command("broadcast") & filters.user(ADMINS))
 async def broadcast(client, message):
     if len(message.command) < 2:
@@ -100,7 +107,8 @@ async def broadcast(client, message):
 
     await message.reply(f"✅ Broadcast Done\n👤 Success: {success}\n❌ Failed: {fail}")
 
-# ⚙️ Admin command: /setexpiry <user_id> <hours>
+
+# ---------------- ADMIN COMMANDS ---------------- #
 @app.on_message(filters.command("setexpiry") & filters.user(ADMINS))
 async def set_expiry(client, message):
     if len(message.command) < 3:
@@ -116,6 +124,26 @@ async def set_expiry(client, message):
     )
     await message.reply(f"✅ Expiry for user {user_id} set to {hours} hours.")
 
-# 🏃 Run Bot
+
+@app.on_message(filters.command("userinfo") & filters.user(ADMINS))
+async def user_info(client, message):
+    if len(message.command) < 2:
+        return await message.reply("⚠️ Usage: /userinfo <user_id>")
+
+    user_id = int(message.command[1])
+    user = users_collection.find_one({"user_id": user_id})
+
+    if not user:
+        return await message.reply("❌ User not found.")
+
+    await message.reply(f"👤 **User ID:** {user_id}\n⏳ **Expiry:** {user['expiry']} hours")
+
+
+# ---------------- START ---------------- #
+@app.on_message(filters.command("start"))
+async def start_cmd(client, message):
+    await message.reply("👋 Welcome to FileStore Bot!\n\n📂 Send me any file, I'll store it permanently in my channel and give you a link to access it.\n\n⏳ Expiry system active.")
+
+
 print("🤖 Bot Started!")
 app.run()
